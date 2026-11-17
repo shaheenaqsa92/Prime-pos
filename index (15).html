@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prime POS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  /* Layout: one phone-first screen, three views (Sale, Today, Forecast) switched from a bottom bar. */
+  :root {
+    --bg:#eef2f0; --surface:#ffffff; --ink:#14211c; --muted:#5b6b64; --line:#d9e1dd;
+    --accent:#0b6b57; --accent-ink:#ffffff; --accent-soft:#dff0ea; --forecast:#b7791f; --forecast-soft:#f6e7cc; --bad:#a32d2d;
+    --font-head:'Space Grotesk', system-ui, sans-serif; --font-body:'Inter', system-ui, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#0e1512; --surface:#16201b; --ink:#e6efe9; --muted:#97a8a0; --line:#27352e;
+    --accent:#43c6a3; --accent-ink:#06231a; --accent-soft:#183328; --forecast:#e0a64a; --forecast-soft:#3a2d14; --bad:#f08a8a; color-scheme: dark; } }
+  :root[data-theme="dark"] {
+    --bg:#0e1512; --surface:#16201b; --ink:#e6efe9; --muted:#97a8a0; --line:#27352e;
+    --accent:#43c6a3; --accent-ink:#06231a; --accent-soft:#183328; --forecast:#e0a64a; --forecast-soft:#3a2d14; --bad:#f08a8a; color-scheme: dark; }
+
+  * { box-sizing:border-box; }
+  html { background:var(--bg); }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 var(--font-body);
+         padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px));
+         padding-block:0 96px; -webkit-text-size-adjust:100%; }
+  .wrap { max-width:640px; margin:0 auto; }
+  h1,h2,h3 { font-family:var(--font-head); margin:0; letter-spacing:-.01em; }
+  .num { font-variant-numeric:tabular-nums; }
+  header.top { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; padding:20px 0 12px; }
+  header.top h1 { font-size:24px; }
+  header.top small { color:var(--muted); display:block; font-size:12px; letter-spacing:.06em; text-transform:uppercase; }
+  .today-chip { text-align:right; font-size:13px; color:var(--muted); }
+  .today-chip b { display:block; font-family:var(--font-head); font-size:18px; color:var(--ink); }
+  .note { background:var(--forecast-soft); color:var(--ink); border-radius:8px; padding:8px 12px; font-size:12.5px; margin-bottom:14px; }
+
+  section.card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+  section.card > h2 { font-size:15px; margin-bottom:12px; }
+  label.lbl { display:block; font-size:12px; color:var(--muted); letter-spacing:.05em; text-transform:uppercase; margin-bottom:6px; }
+  input[type=text], input[type=password], select { width:100%; min-width:0; font:inherit; font-size:16px; color:var(--ink); background:var(--bg);
+         border:1px solid var(--line); border-radius:8px; padding:11px 12px; }
+  input:focus-visible, button:focus-visible, select:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .picked { margin-top:8px; font-size:13px; color:var(--muted); }
+  .picked b { color:var(--ink); font-weight:600; }
+
+  .svc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .svc { text-align:left; font:inherit; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 12px; cursor:pointer; min-width:0; }
+  .svc:active { background:var(--accent-soft); }
+  .svc span { display:block; font-weight:500; line-height:1.25; }
+  .svc em { display:block; font-style:normal; color:var(--muted); font-size:13px; margin-top:2px; }
+
+  .line { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line); }
+  .line:last-child { border-bottom:0; }
+  .line .nm { min-width:0; }
+  .line .nm small { display:block; color:var(--muted); }
+  .qty { display:flex; align-items:center; gap:8px; }
+  .qty button { width:32px; height:32px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font-size:18px; line-height:1; cursor:pointer; }
+  .empty { color:var(--muted); font-size:14px; padding:6px 0; }
+  .total-row { display:flex; justify-content:space-between; align-items:baseline; margin-top:12px; }
+  .total-row b { font-family:var(--font-head); font-size:26px; }
+  .pay { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .pay button { font:inherit; font-size:14px; padding:7px 12px; border-radius:999px; border:1px solid var(--line); background:var(--bg); color:var(--ink); cursor:pointer; }
+  .pay button[aria-pressed=true] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .primary { width:100%; margin-top:14px; font:inherit; font-weight:600; font-size:16px; padding:13px; border:0; border-radius:10px; background:var(--accent); color:var(--accent-ink); cursor:pointer; }
+  .primary:disabled { opacity:.45; cursor:default; }
+  .ghost { font:inherit; font-size:14px; padding:9px 14px; border-radius:8px; border:1px solid var(--line); background:transparent; color:var(--ink); cursor:pointer; }
+
+  .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+  .stat small { display:block; font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .stat b { display:block; font-family:var(--font-head); font-size:20px; margin-top:2px; overflow-wrap:anywhere; }
+  .bars .row { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto; gap:10px; align-items:center; padding:5px 0; font-size:13.5px; }
+  .bars .track { height:8px; background:var(--bg); border-radius:4px; overflow:hidden; }
+  .bars .fill { height:100%; background:var(--accent); border-radius:4px; }
+  .bill { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .bill:last-child { border-bottom:0; }
+  .bill .l { min-width:0; }
+  .bill .l small { color:var(--muted); display:block; }
+  .tag { font-size:11px; background:var(--bg); color:var(--muted); border-radius:4px; padding:1px 6px; margin-left:6px; }
+
+  .chart { width:100%; height:auto; display:block; }
+  .chart text { fill:var(--muted); font:10px var(--font-body); }
+  .chart .grid { stroke:var(--line); stroke-width:1; }
+  .chart .bar { fill:var(--accent); }
+  .chart .fc { fill:var(--forecast); opacity:.85; }
+  .chart .split { stroke:var(--muted); stroke-dasharray:3 3; }
+  .legend { display:flex; gap:16px; font-size:12.5px; color:var(--muted); margin-top:8px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+  .ftable { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
+  .ftable td { padding:7px 0; border-bottom:1px solid var(--line); }
+  .ftable td:last-child { text-align:right; }
+  .ftable tr:last-child td { border-bottom:0; font-weight:600; }
+  .ai-out { white-space:pre-wrap; margin-top:12px; background:var(--accent-soft); border-radius:8px; padding:12px; font-size:14.5px; }
+  .ai-out.err { background:var(--forecast-soft); }
+  details.conn { margin-top:12px; font-size:13.5px; color:var(--muted); }
+  details.conn summary { cursor:pointer; }
+  details.conn .box { margin-top:8px; display:grid; gap:8px; }
+
+  nav.tabs { position:fixed; left:0; right:0; bottom:0; background:var(--surface); border-top:1px solid var(--line);
+             display:grid; grid-template-columns:repeat(4,1fr);
+             padding:0 max(0px, env(safe-area-inset-left, 0px)) env(safe-area-inset-bottom, 0px) max(0px, env(safe-area-inset-right, 0px)); }
+  nav.tabs button { font:inherit; font-weight:500; font-size:14px; padding:14px 6px 13px; border:0; background:transparent; color:var(--muted); border-top:3px solid transparent; cursor:pointer; }
+  nav.tabs button[aria-selected=true] { color:var(--accent); border-top-color:var(--accent); }
+  .toast { position:fixed; left:50%; bottom:calc(76px + env(safe-area-inset-bottom, 0px)); transform:translateX(-50%); background:var(--ink); color:var(--bg);
+           padding:10px 16px; border-radius:999px; font-size:14px; max-width:90vw; }
+  @media (prefers-reduced-motion: no-preference) { .primary, .svc, nav.tabs button { transition:background .15s, color .15s; } }
+  #login { display:none; max-width:420px; margin:0 auto; padding:64px 0 32px; }
+  body.locked #login { display:block; }
+  body.locked .wrap, body.locked nav.tabs, body.locked #toast { display:none !important; }
+  #login h1 { font-size:28px; margin:6px 0 4px; } #login p { color:var(--muted); margin:0 0 20px; }
+  #login .f { display:grid; gap:10px; } #loginErr { color:var(--bad); font-size:14px; min-height:20px; margin-top:10px; }
+  #logout { font:inherit; font-size:13px; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:transparent; color:var(--muted); cursor:pointer; margin-top:6px; }
+  .kpis { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:14px; }
+  .kpi { background:var(--card,var(--surface)); background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px; min-width:0; }
+  .kpi small { display:block; font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .kpi b { display:block; font-family:var(--font-head); font-size:21px; white-space:nowrap; margin:4px 0 2px; overflow-wrap:anywhere; }
+  .delta { font-size:12.5px; color:var(--muted); }
+  .delta.up { color:var(--accent); font-weight:600; } .delta.down { color:var(--bad); font-weight:600; }
+  .chart .today { fill:var(--forecast); }
+  .linkbtn { background:none; border:0; color:var(--accent); font:inherit; font-size:14px; font-weight:600; padding:12px 0 0; cursor:pointer; text-align:left; }
+  #loginErr.ok { color:var(--accent); }
+</style>
+</head>
+<body>
+<div id="login">
+  <small style="color:var(--muted);letter-spacing:.06em;text-transform:uppercase;font-size:12px">Prime Accounting Services</small>
+  <h1>Prime POS</h1>
+  <p>Sign in with the email and password given to you.</p>
+  <form class="f" id="loginForm">
+    <input type="text" id="lEmail" placeholder="Email" autocomplete="username" inputmode="email" autocapitalize="off">
+    <input type="password" id="lPass" placeholder="Password" autocomplete="current-password">
+    <button class="primary" id="lBtn" type="submit" style="margin-top:4px">Sign in</button>
+  </form>
+  <button type="button" id="forgotLink" class="linkbtn">Forgot password?</button>
+  <form class="f" id="forgotForm" style="display:none;margin-top:14px">
+    <p style="margin:0">Enter your email and we will send you a link to set a new password.</p>
+    <input type="text" id="fEmail" placeholder="Email" autocomplete="username" inputmode="email" autocapitalize="off">
+    <button class="primary" id="fBtn" type="submit" style="margin-top:4px">Send reset link</button>
+    <button type="button" id="fBack" class="linkbtn">Back to sign in</button>
+  </form>
+  <form class="f" id="resetForm" style="display:none;margin-top:14px">
+    <p style="margin:0">Choose a new password (at least 6 characters).</p>
+    <input type="password" id="rPass" placeholder="New password" autocomplete="new-password">
+    <input type="password" id="rPass2" placeholder="Repeat new password" autocomplete="new-password">
+    <button class="primary" id="rBtn" type="submit" style="margin-top:4px">Save new password</button>
+  </form>
+  <div id="loginErr" role="alert"></div>
+</div>
+<div class="wrap">
+  <header class="top">
+    <div><small>Prime Accounting Services</small><h1>Prime POS</h1></div>
+    <div class="today-chip"><span id="dateLbl"></span><b class="num" id="todayTotal">Rs 0</b><button id="logout" type="button">Sign out</button></div>
+  </header>
+  <div class="note" id="sampleNote">Sales before today are sample history so the forecast has something to work with. New sales you add are saved on this device.</div>
+
+  <!-- VIEW: SALE -->
+  <div id="view-sale">
+    <section class="card">
+      <h2>Customer</h2>
+      <label class="lbl" for="cust">Search by name, business or city</label>
+      <input type="text" id="cust" list="custlist" placeholder="e.g. Ali Traders" autocomplete="off">
+      <datalist id="custlist"></datalist>
+      <div class="picked" id="picked">No customer selected.</div>
+      <button class="ghost" id="toggleNew" type="button" style="margin-top:12px">+ Add new customer</button>
+      <div id="newBox" style="margin-top:12px;display:none;gap:8px">
+        <input type="text" id="nName" placeholder="Owner name" autocomplete="off">
+        <input type="text" id="nBiz" placeholder="Business name" autocomplete="off" style="margin-top:8px">
+        <input type="text" id="nCity" placeholder="City" autocomplete="off" style="margin-top:8px">
+        <button class="primary" id="saveNew" type="button" style="margin-top:12px">Save customer</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Services</h2>
+      <div class="svc-grid" id="svcGrid"></div>
+    </section>
+    <section class="card">
+      <h2>Bill</h2>
+      <div id="cart"></div>
+      <div class="total-row"><span>Total</span><b class="num" id="cartTotal">Rs 0</b></div>
+      <div class="pay" id="pay" role="group" aria-label="Payment method"></div>
+      <button class="primary" id="complete" disabled>Complete sale</button>
+    </section>
+  </div>
+
+  <!-- VIEW: TODAY -->
+  <div id="view-today" hidden>
+    <div class="kpis">
+      <div class="kpi"><small>Revenue today</small><b class="num" id="tRev">Rs 0</b><span id="tDelta" class="delta"></span></div>
+      <div class="kpi"><small>Bills today</small><b class="num" id="tCnt">0</b><span id="tCntD" class="delta"></span></div>
+      <div class="kpi"><small>Average bill</small><b class="num" id="tAvg">Rs 0</b><span class="delta">30-day avg <span id="tAvg30" class="num"></span></span></div>
+      <div class="kpi"><small>On credit (30 days)</small><b class="num" id="tCredit">Rs 0</b><span class="delta" id="tCreditD"></span></div>
+    </div>
+    <section class="card"><h2>Last 14 days</h2><svg class="chart" id="chart14" viewBox="0 0 360 150" role="img" aria-label="Daily revenue for the last 14 days"></svg></section>
+    <section class="card"><h2>Top services, 30 days</h2><div class="bars" id="topSvc"></div></section>
+    <section class="card"><h2>Top customers, 30 days</h2><div class="bars" id="topCust"></div></section>
+    <section class="card"><h2>How customers paid, 30 days</h2><div class="bars" id="payMix"></div></section>
+    <section class="card"><h2>Recent bills</h2><div id="recent"></div></section>
+  </div>
+
+  <!-- VIEW: CHAT -->
+  <div id="view-chat" hidden>
+    <section class="card">
+      <h2>Chatbot</h2>
+      <div id="chatLog" style="display:flex;flex-direction:column;gap:8px;min-height:180px;max-height:50vh;overflow-y:auto">
+        <div class="ai-out" style="margin:0">Assalam o Alaikum! Ask me anything about accounting, tax or your sales.</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <input type="text" id="chatIn" placeholder="Type a message..." autocomplete="off">
+        <button class="primary" id="chatSend" type="button" style="width:auto;margin-top:0;padding:0 18px">Send</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- VIEW: FORECAST -->
+  <div id="view-fc" hidden>
+    <section class="card">
+      <h2 id="fcTitle">Next 7 days</h2>
+      <div class="pay" id="fcMode" role="group" aria-label="Forecast period" style="margin:0 0 12px">
+        <button type="button" data-m="7d" aria-pressed="true">7 days</button>
+        <button type="button" data-m="6m" aria-pressed="false">6 months</button>
+      </div>
+      <svg class="chart" id="chart" viewBox="0 0 360 190" role="img" aria-label="Daily sales for the last 21 days and forecast for the next 7 days"></svg>
+      <div class="legend" id="fcLegend"><span><i style="background:var(--accent)"></i>Actual</span><span><i style="background:var(--forecast)"></i>Forecast</span></div>
+      <table class="ftable" id="ftable"></table>
+    </section>
+    <section class="card">
+      <h2>AI insights</h2>
+      <p class="empty" style="margin:0 0 10px">Sends the last 14 days and the forecast to your Chatbots function and shows its advice.</p>
+      <button class="primary" id="askAI" style="margin-top:0">Ask AI about this forecast</button>
+      <div id="aiOut"></div>
+      <button class="ghost" id="dlCsv" type="button" style="margin-top:14px;width:100%">Download sales data (CSV)</button>
+    </section>
+  </div>
+</div>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-v="sale">New sale</button>
+  <button role="tab" aria-selected="false" data-v="today">Today</button>
+  <button role="tab" aria-selected="false" data-v="fc">Forecast</button>
+  <button role="tab" aria-selected="false" data-v="chat">Chatbot</button>
+</nav>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+  const SUPABASE_URL = "https://ebfzrdlkrpbsyxlveuzd.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_KKiPOb5sb0dL0EOFrv67Ew_JWqPJjIM";
+  const SESSKEY = "primepos.session.v1";
+  const FUNCTION_URL = "https://ebfzrdlkrpbsyxlveuzd.supabase.co/functions/v1/Chatbots";
+
+  let CUST = `C001|Ali Ahmed|Ali Traders|Lahore
+C002|Usman Khan|Usman Enterprises|Lahore
+C003|Sara Malik|Malik Garments|Lahore
+C004|Hamza Raza|Hamza Electronics|Faisalabad
+C005|Ayesha Noor|Noor Cosmetics|Lahore
+C006|Bilal Hussain|Bilal Store|Gujranwala
+C007|Ahmed Ali|AA Furniture|Lahore
+C008|Fatima Shah|Shah Collection|Multan
+C009|Zain Abbas|Zain Suppliers|Lahore
+C010|Hassan Iqbal|HI Traders|Sialkot
+C011|Umar Farooq|Umar Fabrics|Lahore
+C012|Sana Tariq|Sana Boutique|Lahore
+C013|Asad Mehmood|Asad Autos|Gujrat
+C014|Maryam Akhtar|Maryam Foods|Lahore
+C015|Danish Malik|DM Electronics|Multan
+C016|Imran Shah|Shah Traders|Lahore
+C017|Hira Ahmed|Hira Cosmetics|Sialkot
+C018|Waqas Ali|Waqas Store|Faisalabad
+C019|Noor Hassan|Noor Enterprises|Lahore
+C020|Kamran Raza|KR Suppliers|Multan
+C021|Saad Khan|Saad Garments|Lahore
+C022|Iqra Aslam|Iqra Collection|Gujranwala
+C023|Fahad Iqbal|Fahad Traders|Lahore
+C024|Rabia Noor|RN Boutique|Multan
+C025|Talha Ahmed|Talha Furniture|Lahore
+C026|Shahid Ali|Shahid Autos|Sialkot
+C027|Maham Raza|Maham Store|Lahore
+C028|Adnan Malik|Malik Suppliers|Faisalabad
+C029|Zoya Tariq|Zoya Cosmetics|Lahore
+C030|Noman Abbas|Noman Traders|Gujrat
+C031|Ehsan Ahmed|Ehsan Electronics|Lahore
+C032|Amna Shah|Amna Boutique|Multan
+C033|Rizwan Khan|RK Enterprises|Lahore
+C034|Laiba Noor|Laiba Collection|Sialkot
+C035|Junaid Ali|Junaid Foods|Lahore
+C036|Muneeb Raza|MR Traders|Faisalabad
+C037|Kiran Malik|Kiran Garments|Lahore
+C038|Arslan Shah|Shah Electronics|Gujranwala
+C039|Bushra Ahmed|Bushra Store|Lahore
+C040|Farhan Iqbal|Farhan Suppliers|Multan
+C041|Danish Ahmed|DA Traders|Lahore
+C042|Mehwish Noor|MN Cosmetics|Sialkot
+C043|Saqib Hussain|Saqib Enterprises|Lahore
+C044|Anum Tariq|Anum Boutique|Faisalabad
+C045|Yasir Ali|Yasir Furniture|Lahore
+C046|Komal Shah|Komal Collection|Multan
+C047|Naveed Khan|Naveed Traders|Lahore
+C048|Sidra Malik|Sidra Foods|Gujranwala
+C049|Rehan Abbas|Rehan Electronics|Lahore
+C050|Eman Raza|Eman Store|Sialkot`.split("\n").map(l => { const p = l.split("|"); return { id:p[0], name:p[1], biz:p[2], city:p[3] }; });
+
+  const CKEY = "primepos.customers.v1";
+  let extraCust = store0();
+  function store0() { try { return JSON.parse(localStorage.getItem(CKEY) || "[]"); } catch (e) { return []; } }
+  CUST = CUST.concat(extraCust);
+
+  const SERVICES = [
+    { id:"itr",  name:"Income tax return (individual)", price:8000 },
+    { id:"str",  name:"Sales tax return (monthly)",     price:6000 },
+    { id:"book", name:"Monthly bookkeeping",            price:15000 },
+    { id:"ntn",  name:"NTN / STRN registration",        price:5000 },
+    { id:"pay",  name:"Payroll processing",             price:12000 },
+    { id:"fs",   name:"Financial statements",           price:20000 },
+    { id:"ctr",  name:"Company tax return",             price:25000 },
+    { id:"secp", name:"Company registration (SECP)",    price:30000 },
+    { id:"aud",  name:"Audit support",                  price:40000 }
+  ];
+  const PAY = ["Cash", "Bank transfer", "Easypaisa", "JazzCash", "On credit"];
+  const SKEY = "primepos.sales.v1", AKEY = "primepos.anon.v1";
+
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const fmt = n => "Rs " + Math.round(n).toLocaleString("en-PK");
+  const kfmt = n => n >= 1e6 ? (n / 1e6).toFixed(2).replace(/0$/, "") + "M" : n >= 1000 ? (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + "k" : String(n);
+  const svcById = id => SERVICES.find(s => s.id === id);
+  const custById = id => CUST.find(c => c.id === id);
+  const two = n => String(n).padStart(2, "0");
+  const dayKey = ts => { const d = new Date(ts); return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate()); };
+  const dm = d => d.getDate() + "/" + (d.getMonth() + 1);
+  const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function store(get, key, val) {
+    try { return get ? JSON.parse(localStorage.getItem(key) || "null") : localStorage.setItem(key, val); } catch (e) { return null; }
+  }
+
+  /* ---------- sample history (deterministic, so the forecast is stable) ---------- */
+  function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function seedSales() {
+    const r = rng(20261112), out = [], now = new Date();
+    for (let d = 180; d >= 0; d--) {
+      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d);
+      const dow = day.getDay();
+      if (dow === 0) continue;
+      let n = (dow === 5 || dow === 6) ? 3 + Math.floor(r() * 3) : 5 + Math.floor(r() * 4);
+      n = Math.round(n * (0.78 + (180 - d) * 0.0024));
+      if (d === 0) n = 5;
+      for (let i = 0; i < n; i++) {
+        const c = CUST[Math.floor(r() * CUST.length)];
+        const nl = 1 + Math.floor(r() * 2.4), lines = [];
+        for (let j = 0; j < nl; j++) {
+          const s = SERVICES[Math.floor(Math.pow(r(), 1.4) * SERVICES.length)];
+          if (!lines.find(l => l.s === s.id)) lines.push({ s:s.id, q: r() < 0.2 ? 2 : 1, p:s.price });
+        }
+        let ts = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 10 + Math.floor(r() * 8), Math.floor(r() * 60)).getTime();
+        if (d === 0) ts = Date.now() - (i + 1) * 37 * 60000;
+        out.push({ id:"S" + ts + i, ts, cust:c.id, lines, pay:PAY[Math.floor(r() * PAY.length)], total:lines.reduce((a, l) => a + l.q * l.p, 0), sample:true });
+      }
+    }
+    return out;
+  }
+  let local = store(true, SKEY) || [];
+  let sales = seedSales().concat(local);
+
+  /* ---------- aggregates ---------- */
+  function series(n, endBack) {
+    const by = {}, out = [], now = new Date();
+    sales.forEach(s => { const k = dayKey(s.ts); (by[k] = by[k] || { t:0, c:0 }); by[k].t += s.total; by[k].c++; });
+    for (let i = n - 1 + endBack; i >= endBack; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i), v = by[dayKey(d)] || { t:0, c:0 };
+      out.push({ date:d, total:v.t, count:v.c, dow:d.getDay() });
+    }
+    return out;
+  }
+  function makeForecast() {
+    const hist = series(28, 1), sum = a => a.reduce((x, y) => x + y.total, 0);
+    const recent = sum(hist.slice(14)), prior = sum(hist.slice(0, 14));
+    let g = prior > 0 ? recent / prior : 1;
+    g = Math.sqrt(Math.min(1.2, Math.max(0.85, g)));
+    const means = {};
+    for (let d = 0; d < 7; d++) { const xs = hist.filter(h => h.dow === d).map(h => h.total); means[d] = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0; }
+    const now = new Date(), days = [];
+    for (let i = 1; i <= 7; i++) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i); days.push({ date:d, dow:d.getDay(), total:Math.round(means[d.getDay()] * g / 100) * 100 }); }
+    return { days, growth:g };
+  }
+
+  /* ---------- sale view ---------- */
+  const cart = { cust:null, lines:{}, pay:PAY[0] };
+  function labelOf(c) { return c.name + " — " + c.biz + " (" + c.city + ")"; }
+  $("#custlist").innerHTML = CUST.map(c => '<option value="' + esc(labelOf(c)) + '"></option>').join("");
+  $("#cust").addEventListener("input", e => {
+    const v = e.target.value.trim().toLowerCase();
+    cart.cust = CUST.find(c => labelOf(c).toLowerCase() === v) || null;
+    $("#picked").innerHTML = cart.cust ? "<b>" + esc(cart.cust.id) + "</b> · " + esc(cart.cust.biz) + ", " + esc(cart.cust.city) : "No customer selected.";
+    refreshCart();
+  });
+  function refreshCustList() { $("#custlist").innerHTML = CUST.map(c => '<option value="' + esc(labelOf(c)) + '"></option>').join(""); }
+  $("#toggleNew").addEventListener("click", () => { const b = $("#newBox"); b.style.display = b.style.display === "none" ? "block" : "none"; });
+  $("#saveNew").addEventListener("click", () => {
+    const name = $("#nName").value.trim(), biz = $("#nBiz").value.trim(), city = $("#nCity").value.trim();
+    if (!name || !biz || !city) { toast("Please fill name, business and city"); return; }
+    const c = { id:"C" + String(CUST.length + 1).padStart(3, "0"), name, biz, city };
+    CUST.push(c); extraCust.push(c);
+    try { localStorage.setItem(CKEY, JSON.stringify(extraCust)); } catch (e) {}
+    refreshCustList();
+    cart.cust = c; $("#cust").value = labelOf(c);
+    $("#picked").innerHTML = "<b>" + esc(c.id) + "</b> \u00b7 " + esc(c.biz) + ", " + esc(c.city);
+    $("#nName").value = $("#nBiz").value = $("#nCity").value = ""; $("#newBox").style.display = "none";
+    refreshCart(); toast("Customer added: " + c.biz);
+  });
+  $("#svcGrid").innerHTML = SERVICES.map(s => '<button class="svc" data-s="' + s.id + '"><span>' + esc(s.name) + '</span><em class="num">' + fmt(s.price) + "</em></button>").join("");
+  $("#svcGrid").addEventListener("click", e => { const b = e.target.closest(".svc"); if (!b) return; cart.lines[b.dataset.s] = (cart.lines[b.dataset.s] || 0) + 1; refreshCart(); });
+  $("#pay").innerHTML = PAY.map(p => '<button type="button" aria-pressed="' + (p === cart.pay) + '" data-p="' + esc(p) + '">' + esc(p) + "</button>").join("");
+  $("#pay").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return; cart.pay = b.dataset.p;
+    document.querySelectorAll("#pay button").forEach(x => x.setAttribute("aria-pressed", x.dataset.p === cart.pay));
+  });
+  $("#cart").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    const id = b.dataset.s; cart.lines[id] = (cart.lines[id] || 0) + (b.dataset.d === "+" ? 1 : -1);
+    if (cart.lines[id] <= 0) delete cart.lines[id];
+    refreshCart();
+  });
+  function cartTotal() { return Object.entries(cart.lines).reduce((a, [id, q]) => a + q * svcById(id).price, 0); }
+  function refreshCart() {
+    const ids = Object.keys(cart.lines);
+    $("#cart").innerHTML = ids.length ? ids.map(id => { const s = svcById(id), q = cart.lines[id];
+      return '<div class="line"><div class="nm">' + esc(s.name) + '<small class="num">' + fmt(s.price) + ' each</small></div><div class="qty"><button data-s="' + id + '" data-d="-" aria-label="Remove one">−</button><span class="num">' + q + '</span><button data-s="' + id + '" data-d="+" aria-label="Add one">+</button></div><b class="num">' + fmt(s.price * q) + "</b></div>"; }).join("")
+      : '<p class="empty">Tap a service above to add it to this bill.</p>';
+    $("#cartTotal").textContent = fmt(cartTotal());
+    $("#complete").disabled = !(cart.cust && ids.length);
+  }
+  $("#complete").addEventListener("click", () => {
+    const lines = Object.entries(cart.lines).map(([id, q]) => ({ s:id, q, p:svcById(id).price }));
+    const sale = { id:"S" + Date.now(), ts:Date.now(), cust:cart.cust.id, lines, pay:cart.pay, total:cartTotal() };
+    local.push(sale); sales.push(sale); store(false, SKEY, JSON.stringify(local));
+    toast("Sale saved: " + fmt(sale.total) + " from " + cart.cust.biz);
+    cart.lines = {}; cart.cust = null; $("#cust").value = ""; $("#picked").textContent = "No customer selected.";
+    refreshCart(); renderToday();
+  });
+
+  /* ---------- today view ---------- */
+  function pct(n, base) { if (!base) return ""; const p = Math.round((n - base) / base * 100); return (p >= 0 ? "\u25B2 " : "\u25BC ") + Math.abs(p) + "% vs yesterday"; }
+  function setDelta(el, n, base) { const t = pct(n, base); el.textContent = t || "no sales yesterday"; el.className = "delta" + (t ? (n >= base ? " up" : " down") : ""); }
+  function barList(el, rows, fmtv) {
+    const mx = rows.length ? rows[0][1] : 1;
+    el.innerHTML = rows.map(([name, v]) => '<div class="row"><span>' + esc(name) + '</span><div class="track"><div class="fill" style="width:' + Math.round(v / mx * 100) + '%"></div></div><b class="num">' + fmtv(v) + "</b></div>").join("") || '<p class="empty">No sales yet.</p>';
+  }
+  function renderToday() {
+    const tk = dayKey(Date.now()), yk = dayKey(Date.now() - 864e5);
+    const today = sales.filter(s => dayKey(s.ts) === tk), yest = sales.filter(s => dayKey(s.ts) === yk);
+    const rev = today.reduce((a, s) => a + s.total, 0), yRev = yest.reduce((a, s) => a + s.total, 0);
+    $("#tRev").textContent = fmt(rev); $("#tCnt").textContent = today.length; $("#tAvg").textContent = fmt(today.length ? rev / today.length : 0);
+    $("#todayTotal").textContent = fmt(rev);
+    setDelta($("#tDelta"), rev, yRev); setDelta($("#tCntD"), today.length, yest.length);
+    const cutoff = Date.now() - 30 * 864e5, last30 = sales.filter(s => s.ts >= cutoff);
+    $("#tAvg30").textContent = fmt(last30.length ? last30.reduce((a, s) => a + s.total, 0) / last30.length : 0);
+    const credit = last30.filter(s => s.pay === "On credit");
+    $("#tCredit").textContent = fmt(credit.reduce((a, s) => a + s.total, 0)); $("#tCreditD").textContent = credit.length + " bills to collect";
+    const by = {}, byC = {}, byP = {};
+    last30.forEach(s => { byC[s.cust] = (byC[s.cust] || 0) + s.total; byP[s.pay] = (byP[s.pay] || 0) + s.total; s.lines.forEach(l => by[l.s] = (by[l.s] || 0) + l.q * l.p); });
+    const top = o => Object.entries(o).sort((a, b) => b[1] - a[1]);
+    barList($("#topSvc"), top(by).slice(0, 5).map(([id, v]) => [svcById(id).name, v]), kfmt);
+    barList($("#topCust"), top(byC).slice(0, 5).map(([id, v]) => [custById(id).biz, v]), kfmt);
+    barList($("#payMix"), top(byP), kfmt);
+    // 14-day chart
+    const ser = series(14, 0), mx = Math.max(20000, Math.ceil(Math.max.apply(null, ser.map(d => d.total)) / 20000) * 20000);
+    const L = 34, R = 356, T = 10, B = 124, bw = (R - L) / ser.length, y = v => B - (v / mx) * (B - T);
+    let g = "";
+    [0, 0.5, 1].forEach(t => { const v = mx * t; g += '<line class="grid" x1="' + L + '" x2="' + R + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text x="' + (L - 4) + '" y="' + (y(v) + 3) + '" text-anchor="end">' + kfmt(v) + "</text>"; });
+    ser.forEach((d, i) => { const h = Math.max(d.total > 0 ? 1 : 0, B - y(d.total)); g += '<rect class="' + (i === ser.length - 1 ? "fc" : "bar") + '" x="' + (L + i * bw + 2) + '" y="' + (B - h) + '" width="' + (bw - 4) + '" height="' + h + '" rx="2"/>'; });
+    [0, 6, 13].forEach(i => { g += '<text x="' + (L + i * bw + bw / 2) + '" y="142" text-anchor="middle">' + dm(ser[i].date) + "</text>"; });
+    $("#chart14").innerHTML = g;
+    const rec = sales.slice().sort((a, b) => b.ts - a.ts).slice(0, 10);
+    $("#recent").innerHTML = rec.map(s => { const c = custById(s.cust), d = new Date(s.ts);
+      return '<div class="bill"><div class="l"><b>' + esc(c.biz) + '</b>' + (s.sample ? '<span class="tag">sample</span>' : "") + '<small>' + dm(d) + " " + two(d.getHours()) + ":" + two(d.getMinutes()) + " \u00b7 " + esc(s.pay) + "</small></div><b class=\"num\">" + fmt(s.total) + "</b></div>"; }).join("");
+  }
+
+  /* ---------- forecast view ---------- */
+  let fcMode = "7d";
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function monthlyActual() {
+    const now = new Date(), out = [];
+    for (let m = 5; m >= 1; m--) {
+      const first = new Date(now.getFullYear(), now.getMonth() - m, 1), next = new Date(first.getFullYear(), first.getMonth() + 1, 1);
+      const t = sales.filter(x => x.ts >= first.getTime() && x.ts < next.getTime()).reduce((a, x) => a + x.total, 0);
+      out.push({ label:MON[first.getMonth()] + " " + first.getFullYear(), short:MON[first.getMonth()], total:t });
+    }
+    return out;
+  }
+  function makeMonthly() {
+    const hist = series(28, 1), perDay = hist.reduce((a, h) => a + h.total, 0) / 28 / (6 / 7);
+    const gm = 1 + Math.max(-0.03, Math.min(0.03, (makeForecast().growth - 1) * 0.5));
+    const now = new Date(), months = [];
+    for (let m = 1; m <= 6; m++) {
+      const first = new Date(now.getFullYear(), now.getMonth() + m, 1), dim = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+      let days = 0; for (let d = 1; d <= dim; d++) if (new Date(first.getFullYear(), first.getMonth(), d).getDay() !== 0) days++;
+      months.push({ label:MON[first.getMonth()] + " " + first.getFullYear(), short:MON[first.getMonth()], days, total:Math.round(perDay * days * Math.pow(gm, m) / 1000) * 1000 });
+    }
+    return { months, gm };
+  }
+  function renderForecast() {
+    const L = 36, R = 352, T = 12, B = 160;
+    let s = "", tot = 0, f = makeForecast(), mo = null;
+    $("#fcTitle").textContent = fcMode === "6m" ? "Next 6 months" : "Next 7 days";
+    $("#fcLegend").style.display = "flex";
+    if (fcMode === "6m") {
+      mo = makeMonthly();
+      const act = monthlyActual(), bars = act.map(m => ({ short:m.short, total:m.total, fc:false })).concat(mo.months.map(m => ({ short:m.short, total:m.total, fc:true })));
+      const mx = Math.max(100000, Math.ceil(Math.max.apply(null, bars.map(m => m.total)) / 1000000) * 1000000), bw = (R - L) / bars.length, y = v => B - (v / mx) * (B - T);
+      [0, 0.5, 1].forEach(t => { const v = mx * t; s += '<line class="grid" x1="' + L + '" x2="' + R + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text x="' + (L - 4) + '" y="' + (y(v) + 3) + '" text-anchor="end">' + kfmt(v) + "</text>"; });
+      bars.forEach((m, i) => { const h = Math.max(m.total > 0 ? 1 : 0, B - y(m.total)); s += '<rect class="' + (m.fc ? "fc" : "bar") + '" x="' + (L + i * bw + 3) + '" y="' + (B - h) + '" width="' + (bw - 6) + '" height="' + h + '" rx="2"/><text x="' + (L + i * bw + bw / 2) + '" y="176" text-anchor="middle" style="font-size:8.5px">' + m.short + "</text>"; });
+      s += '<line class="split" x1="' + (L + act.length * bw) + '" x2="' + (L + act.length * bw) + '" y1="' + T + '" y2="' + B + '"/>';
+      $("#chart").innerHTML = s;
+      tot = mo.months.reduce((a, m) => a + m.total, 0);
+      $("#ftable").innerHTML = mo.months.map(m => "<tr><td>" + m.label + ' <span class="sub" style="color:var(--muted);font-size:12.5px">(' + m.days + ' working days)</span></td><td class="num">' + fmt(m.total) + "</td></tr>").join("") + '<tr><td>6-month total</td><td class="num">' + fmt(tot) + "</td></tr>" +
+        '<tr><td colspan="2" style="font-weight:400;color:var(--muted);font-size:12.5px;text-align:left">Estimate from the last 4 weeks of sales with a small monthly trend. Real months can differ.</td></tr>';
+      return { f, tot, mo };
+    }
+    const act = series(21, 0), all = act.map(a => ({ v:a.total, d:a.date, fc:false })).concat(f.days.map(x => ({ v:x.total, d:x.date, fc:true })));
+    const mx = Math.max(20000, Math.ceil(Math.max.apply(null, all.map(a => a.v)) / 20000) * 20000), bw = (R - L) / all.length, y = v => B - (v / mx) * (B - T);
+    [0, 0.5, 1].forEach(t => { const v = mx * t; s += '<line class="grid" x1="' + L + '" x2="' + R + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text x="' + (L - 4) + '" y="' + (y(v) + 3) + '" text-anchor="end">' + kfmt(v) + "</text>"; });
+    all.forEach((a, i) => { const h = Math.max(a.v > 0 ? 1 : 0, B - y(a.v)); s += '<rect class="' + (a.fc ? "fc" : "bar") + '" x="' + (L + i * bw + 1) + '" y="' + (B - h) + '" width="' + (bw - 2) + '" height="' + h + '" rx="1.5"/>'; });
+    [0, 7, 14, 21, 27].forEach(i => { s += '<text x="' + (L + i * bw + bw / 2) + '" y="176" text-anchor="middle">' + dm(all[i].d) + "</text>"; });
+    s += '<line class="split" x1="' + (L + 21 * bw) + '" x2="' + (L + 21 * bw) + '" y1="' + T + '" y2="' + B + '"/>';
+    $("#chart").innerHTML = s;
+    tot = f.days.reduce((a, x) => a + x.total, 0);
+    $("#ftable").innerHTML = f.days.map(x => "<tr><td>" + DOW[x.dow] + " " + dm(x.date) + '</td><td class="num">' + (x.total ? fmt(x.total) : "Closed") + "</td></tr>").join("") + '<tr><td>Week total</td><td class="num">' + fmt(tot) + "</td></tr>";
+    return { f, tot, mo };
+  }
+  $("#fcMode").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return; fcMode = b.dataset.m;
+    document.querySelectorAll("#fcMode button").forEach(x => x.setAttribute("aria-pressed", x.dataset.m === fcMode));
+    $("#aiOut").textContent = ""; renderForecast();
+  });
+
+  async function askAI() {
+    const { f, tot, mo } = renderForecast(), out = $("#aiOut"), btn = $("#askAI");
+    const last14 = series(14, 0).map(d => dm(d.date) + " " + DOW[d.dow] + ": " + Math.round(d.total) + " PKR (" + d.count + " bills)").join("; ");
+    const fc = f.days.map(d => dm(d.date) + " " + DOW[d.dow] + ": " + d.total + " PKR").join("; ");
+    const cutoff = Date.now() - 30 * 864e5, by = {};
+    sales.filter(s => s.ts >= cutoff).forEach(s => s.lines.forEach(l => by[l.s] = (by[l.s] || 0) + l.q * l.p));
+    const top = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([id, v]) => svcById(id).name + " " + v + " PKR").join("; ");
+    let message;
+    if (fcMode === "6m" && mo) {
+      message = "You are a business analyst for Prime Accounting Services, an accounting firm in Pakistan. Amounts are in PKR. Sunday is closed. " +
+        "Daily sales for the last 14 days: " + last14 + ". Top services in the last 30 days: " + top + ". " +
+        "Estimated sales for the next 6 months (total " + tot + " PKR): " + mo.months.map(m => m.label + " " + m.total + " PKR (" + m.days + " working days)").join("; ") + ". " +
+        "Reply in simple English, under 140 words: 1) one sentence on the 6-month outlook, 2) two risks or opportunities, 3) one action to take this month. Say that it is an estimate.";
+    } else
+    message = "You are a business analyst for Prime Accounting Services, an accounting firm in Pakistan. Amounts are in PKR. Sunday is closed. " +
+      "Daily sales for the last 14 days: " + last14 + ". Top services in the last 30 days: " + top + ". " +
+      "Statistical forecast for the next 7 days (total " + tot + " PKR, trend factor " + f.growth.toFixed(2) + "): " + fc + ". " +
+      "Reply in simple English, under 120 words: 1) one sentence on the expected week, 2) two risks or opportunities, 3) one action to take next week.";
+    btn.disabled = true; btn.textContent = "Asking AI...";
+    out.className = "ai-out"; out.textContent = "Waiting for the AI...";
+    try {
+      await ensureSession();
+      const res = await fetch(FUNCTION_URL, { method:"POST", headers:authHeaders(), body:JSON.stringify({ message }) });
+      const data = await res.json().catch(() => ({}));
+      if (data.reply) { out.textContent = data.reply; }
+      else {
+        out.className = "ai-out err";
+        const why = data.error && data.error.message ? data.error.message : (data.error || data.message || JSON.stringify(data.raw || data));
+        out.textContent = "The AI did not answer (" + res.status + "): " + why + (res.status === 401 ? "\n\nFix: turn off Verify JWT for the Chatbots function in Supabase,." : "");
+      }
+    } catch (e) {
+      out.className = "ai-out err";
+      out.textContent = "Could not reach the Chatbots function: " + e.message + "\n\nOpen this file in Chrome or from a hosted link. Some in-app previews block network calls.";
+    }
+    btn.disabled = false; btn.textContent = "Ask AI about this forecast";
+  }
+  $("#askAI").addEventListener("click", askAI);
+  $("#dlCsv").addEventListener("click", () => {
+    const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+    const rows = ["date,bill_id,customer_id,business,city,services,payment,total_pkr,type"].concat(sales.slice().sort((a, b) => a.ts - b.ts).map(x => {
+      const c = custById(x.cust), d = new Date(x.ts);
+      return [dayKey(x.ts) + " " + two(d.getHours()) + ":" + two(d.getMinutes()), x.id, x.cust, q(c.biz), c.city, q(x.lines.map(l => svcById(l.s).name + " x" + l.q).join("; ")), x.pay, x.total, x.sample ? "sample" : "entered"].join(",");
+    }));
+    try {
+      const url = URL.createObjectURL(new Blob([rows.join("\n")], { type:"text/csv" })), a = document.createElement("a");
+      a.href = url; a.download = "prime-pos-sales.csv"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast("Downloaded " + (rows.length - 1) + " sales");
+    } catch (e) { toast("Could not download here"); }
+  });
+
+  /* ---------- chatbot ---------- */
+  function addMsg(t, me, err) {
+    const d = document.createElement("div"); d.className = "ai-out" + (err ? " err" : ""); d.style.margin = "0";
+    if (me) { d.style.background = "var(--accent)"; d.style.color = "var(--accent-ink)"; d.style.alignSelf = "flex-end"; }
+    d.textContent = t; $("#chatLog").appendChild(d); $("#chatLog").scrollTop = $("#chatLog").scrollHeight; return d;
+  }
+  function chatContext() {
+    const tk = dayKey(Date.now()), today = sales.filter(x => dayKey(x.ts) === tk);
+    const tRev = today.reduce((a, x) => a + x.total, 0);
+    const last7 = series(7, 0).map(d => dm(d.date) + " " + DOW[d.dow] + ": " + Math.round(d.total) + " PKR (" + d.count + " bills)").join("; ");
+    const cutoff = Date.now() - 30 * 864e5, by = {}, byC = {};
+    sales.filter(x => x.ts >= cutoff).forEach(x => { byC[x.cust] = (byC[x.cust] || 0) + x.total; x.lines.forEach(l => by[l.s] = (by[l.s] || 0) + l.q * l.p); });
+    const top = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, v]) => svcById(id).name + " " + v + " PKR").join("; ");
+    const topC = Object.entries(byC).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id, v]) => { const c = custById(id); return c.biz + " (" + c.city + ") " + v + " PKR"; }).join("; ");
+    return "You are the assistant inside Prime POS, a point-of-sale app for Prime Accounting Services in Pakistan. Amounts are in PKR. All data is sample demo data. " +
+      "Customers: " + CUST.length + ". Today so far: " + today.length + " bills, " + tRev + " PKR. Last 7 days: " + last7 + ". " +
+      "Top services (30 days): " + top + ". Top customers (30 days): " + topC + ". " +
+      "Answer simply and briefly. If the question is about sales, use this data. For other questions, answer normally.";
+  }
+  async function sendChat() {
+    const text = $("#chatIn").value.trim(); if (!text) return;
+    addMsg(text, true); $("#chatIn").value = ""; $("#chatSend").disabled = true;
+    const w = addMsg("...", false);
+    try {
+      await ensureSession();
+      const res = await fetch(FUNCTION_URL, { method:"POST", headers:authHeaders(), body:JSON.stringify({ message:chatContext() + "\n\nUser question: " + text }) });
+      const data = await res.json().catch(() => ({}));
+      if (data.reply) w.textContent = data.reply;
+      else { w.className = "ai-out err"; w.textContent = "Error: " + (data.error && data.error.message ? data.error.message : (data.error || data.message || JSON.stringify(data.raw || data))); }
+    } catch (e) { w.className = "ai-out err"; w.textContent = "Connection error: " + e.message; }
+    $("#chatSend").disabled = false; $("#chatIn").focus();
+  }
+  $("#chatSend").addEventListener("click", sendChat);
+  $("#chatIn").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); sendChat(); } });
+
+
+  /* ---------- login (Supabase Auth, email + password) ---------- */
+  /* Session lives in memory only, so the sign-in page appears every time the app is opened or reloaded. */
+  let memSess = null;
+  try { localStorage.removeItem(SESSKEY); sessionStorage.removeItem(SESSKEY); } catch (e) {}
+  function getSess() { return memSess; }
+  function setSess(x) { memSess = x || null; }
+  function anonKey() { return SUPABASE_ANON_KEY.indexOf("PASTE") === 0 ? (store(true, AKEY) || "") : SUPABASE_ANON_KEY; }
+  function authHeaders() {
+    const h = { "Content-Type":"application/json" }, k = anonKey(), s = getSess();
+    if (k) h.apikey = k;
+    if (s && s.access_token) h.Authorization = "Bearer " + s.access_token; else if (k) h.Authorization = "Bearer " + k;
+    return h;
+  }
+  async function authCall(path, body) {
+    const r = await fetch(SUPABASE_URL + "/auth/v1/" + path, { method:"POST", headers:{ "Content-Type":"application/json", apikey:anonKey() }, body:JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error_description || d.msg || d.message || ("Error " + r.status));
+    d.expires_at = Math.floor(Date.now() / 1000) + (d.expires_in || 3600);
+    return d;
+  }
+  async function ensureSession() {
+    const s = getSess(); if (!s) return false;
+    if (s.expires_at - 60 > Date.now() / 1000) return true;
+    if (!s.refresh_token) { setSess(null); return false; }
+    try { setSess(await authCall("token?grant_type=refresh_token", { refresh_token:s.refresh_token })); return true; } catch (e) { setSess(null); return false; }
+  }
+  function lock(on) { document.body.classList.toggle("locked", on); }
+  $("#loginForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const err = $("#loginErr"), btn = $("#lBtn"); err.textContent = "";
+    if (SUPABASE_ANON_KEY.indexOf("PASTE") === 0) { err.textContent = "Login is not set up yet (missing key)."; return; }
+    const email = $("#lEmail").value.trim(), password = $("#lPass").value;
+    if (!email || !password) { err.textContent = "Enter your email and password."; return; }
+    btn.disabled = true; btn.textContent = "Signing in...";
+    try { setSess(await authCall("token?grant_type=password", { email, password })); $("#lPass").value = ""; lock(false); }
+    catch (x) { err.textContent = /invalid/i.test(x.message) ? "Wrong email or password." : x.message; }
+    btn.disabled = false; btn.textContent = "Sign in";
+  });
+
+  /* ---------- forgot / reset password ---------- */
+  function showLoginPart(which) {
+    $("#loginForm").style.display = which === "signin" ? "grid" : "none";
+    $("#forgotLink").style.display = which === "signin" ? "block" : "none";
+    $("#forgotForm").style.display = which === "forgot" ? "grid" : "none";
+    $("#resetForm").style.display = which === "reset" ? "grid" : "none";
+    $("#loginErr").textContent = ""; $("#loginErr").className = "";
+  }
+  function say(msg, ok) { const e = $("#loginErr"); e.textContent = msg; e.className = ok ? "ok" : ""; }
+  $("#forgotLink").addEventListener("click", () => { showLoginPart("forgot"); $("#fEmail").value = $("#lEmail").value; });
+  $("#fBack").addEventListener("click", () => showLoginPart("signin"));
+  $("#forgotForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const email = $("#fEmail").value.trim(), btn = $("#fBtn");
+    if (!email) { say("Enter your email."); return; }
+    btn.disabled = true; btn.textContent = "Sending...";
+    try {
+      const r = await fetch(SUPABASE_URL + "/auth/v1/recover?redirect_to=" + encodeURIComponent(location.origin + location.pathname), { method:"POST", headers:{ "Content-Type":"application/json", apikey:anonKey() }, body:JSON.stringify({ email }) });
+      if (r.status === 429) say("Too many requests. Please wait a few minutes and try again.");
+      else say("If this email has an account, a reset link has been sent. Check your inbox and spam folder.", true);
+    } catch (x) { say("Could not connect. Check your internet and try again."); }
+    btn.disabled = false; btn.textContent = "Send reset link";
+  });
+  let recoveryToken = null;
+  (function readRecovery() {
+    const h = new URLSearchParams((location.hash || "").replace(/^#/, ""));
+    if (h.get("error_description")) { showLoginPart("signin"); say(h.get("error_description").replace(/\+/g, " ") + ". Request a new reset link."); try { history.replaceState(null, "", location.pathname); } catch (e) {} return; }
+    if (h.get("type") === "recovery" && h.get("access_token")) { recoveryToken = h.get("access_token"); try { history.replaceState(null, "", location.pathname); } catch (e) {} showLoginPart("reset"); }
+  })();
+  $("#resetForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const a = $("#rPass").value, b = $("#rPass2").value, btn = $("#rBtn");
+    if (a.length < 6) { say("Password must be at least 6 characters."); return; }
+    if (a !== b) { say("The two passwords do not match."); return; }
+    btn.disabled = true; btn.textContent = "Saving...";
+    try {
+      const r = await fetch(SUPABASE_URL + "/auth/v1/user", { method:"PUT", headers:{ "Content-Type":"application/json", apikey:anonKey(), Authorization:"Bearer " + recoveryToken }, body:JSON.stringify({ password:a }) });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) { recoveryToken = null; $("#rPass").value = $("#rPass2").value = ""; showLoginPart("signin"); say("Password changed. Please sign in with your new password.", true); }
+      else say(d.msg || d.error_description || d.message || "Could not change the password. Request a new link.");
+    } catch (x) { say("Could not connect. Check your internet and try again."); }
+    btn.disabled = false; btn.textContent = "Save new password";
+  });
+  $("#logout").addEventListener("click", () => { setSess(null); lock(true); });
+  lock(true);
+  ensureSession().then(ok => lock(!ok));
+
+  /* ---------- shell ---------- */
+  function show(v) {
+    ["sale", "today", "fc", "chat"].forEach(n => $("#view-" + n).hidden = n !== v);
+    document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.v === v));
+    if (v === "today") renderToday(); if (v === "fc") renderForecast();
+    $("#sampleNote").hidden = v === "sale" && false;
+    window.scrollTo(0, 0);
+  }
+  document.querySelector("nav.tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) show(b.dataset.v); });
+  let tt; function toast(m) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 2600); }
+
+  const now = new Date();
+  $("#dateLbl").textContent = DOW[now.getDay()] + " " + now.getDate() + "/" + (now.getMonth() + 1) + "/" + now.getFullYear();
+  refreshCart(); renderToday();
+</script>
+</body>
+</html>
